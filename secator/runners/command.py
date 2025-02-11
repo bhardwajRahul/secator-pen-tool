@@ -79,9 +79,10 @@ class Command(Runner):
 	version_flag = None
 
 	# Install
+	install_pre = None
+	install_post = None
 	install_cmd = None
 	install_github_handle = None
-	install_check = True
 
 	# Serializer
 	item_loader = None
@@ -144,6 +145,9 @@ class Command(Runner):
 			hooks=hooks,
 			validators=validators,
 			context=context)
+
+		# Cmd name
+		self.cmd_name = self.__class__.cmd.split(' ')[0]
 
 		# Inputs path
 		self.inputs_path = None
@@ -297,7 +301,7 @@ class Command(Runner):
 				proxy = CONFIG.http.socks5_proxy
 			elif self.proxy in ['auto', 'http'] and self.proxy_http and CONFIG.http.http_proxy:
 				proxy = CONFIG.http.http_proxy
-			elif self.proxy == 'random':
+			elif self.proxy == 'random' and self.proxy_http:
 				proxy = FreeProxy(timeout=CONFIG.http.freeproxy_timeout, rand=True, anonym=True).get()
 			elif self.proxy.startswith(('http://', 'socks5://')):
 				proxy = self.proxy
@@ -307,7 +311,7 @@ class Command(Runner):
 
 		if proxy != 'proxychains' and self.proxy and not proxy:
 			self._print(
-				f'[bold red]Ignoring proxy "{self.proxy}" for {self.__class__.__name__} (not supported).[/]', rich=True)
+				f'[bold red]Ignoring proxy "{self.proxy}" for {self.cmd_name} (not supported).[/]', rich=True)
 
 	#----------#
 	# Internal #
@@ -361,7 +365,7 @@ class Command(Runner):
 			command = self.cmd if self.shell else shlex.split(self.cmd)
 
 			# Check command is installed and auto-install
-			if not self.is_installed():
+			if not self.no_process and not self.is_installed():
 				if CONFIG.security.auto_install_commands:
 					from secator.installer import ToolInstaller
 					yield Info(
@@ -372,7 +376,7 @@ class Command(Runner):
 					status = ToolInstaller.install(self.__class__)
 					if not status.is_ok():
 						yield Error(
-							message=f'Failed installing {self.name}',
+							message=f'Failed installing {self.cmd_name}',
 							_source=self.unique_name,
 							_uuid=str(uuid.uuid4())
 						)
@@ -432,7 +436,7 @@ class Command(Runner):
 		Returns:
 			bool: True if the command is installed, False otherwise.
 		"""
-		result = subprocess.Popen(["which", self.cmd.split(' ')[0]], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		result = subprocess.Popen(["which", self.cmd_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		result.communicate()
 		return result.returncode == 0
 
@@ -503,7 +507,7 @@ class Command(Runner):
 		if self.config.name in str(exc):
 			message = 'Executable not found.'
 			if self.install_cmd:
-				message += f' Install it with [bold green4]secator install tools {self.config.name}[/].'
+				message += f' Install it with "secator install tools {self.config.name}".'
 			error = Error(message=message)
 		else:
 			error = Error.from_exception(exc)
